@@ -4,12 +4,13 @@
 <head>
     <meta charset="utf-8">
     <title>Super Nyan</title>
+    <style type="text/css">
+        body { margin: 0px; padding: 0px; overflow: hidden; }
+    </style>
 </head>
 
 <body style="background-color: black;">
-    <div>
-        <canvas id="super-nyan-canvas" width="1600" height="900"></canvas>
-    </div>
+    <canvas id="super-nyan-canvas" width="1920" height="1080"></canvas>
     <script type="text/javascript">
         class NyanEngine {
             _isRunning = false;
@@ -21,7 +22,9 @@
 
             constructor(canvasId) {
                 this._canvas = document.getElementById(canvasId);
-                const gl = this._canvas.getContext('webgl2'); 
+                window.onresize = () => this._fitCanvasToScreen();
+                window.onload = (event) => this._fitCanvasToScreen();
+                const gl = this._canvas.getContext('webgl2');
                 this.gl = gl;
                 gl.enable(gl.CULL_Face);
                 gl.enable(gl.DEPTH_TEST);
@@ -32,6 +35,11 @@
                     this._onCloseListeners.forEach(listener => listener())
                 });
             }
+
+            _fitCanvasToScreen = () => {
+                const width = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+                this._canvas.style = `width: ${width}px;`
+            };
 
             addCloseEventListener = (listener) => {
                 this._onCloseListeners.push(listener);
@@ -113,7 +121,7 @@
             };
 
             getProjectionMatrix = () => {
-                if (this._projectionCache === null) {
+                if (!this._projectionCache) {
                     const depthFar = 1000;
                     const depthNear = 0.5;
                     const fovy = 25 * Math.PI / 180;
@@ -214,16 +222,14 @@
                 gl.shaderSource(v, vertSrc);
                 gl.compileShader(v);
                 if (!gl.getShaderParameter(v, gl.COMPILE_STATUS)) {
-                    console.log('vertex shader is invalid')
-                    console.log(gl.getShaderInfoLog(v));
+                    console.error(`vertex shader is invalid.\n${gl.getShaderInfoLog(v)}`)
                     return;
                 }
                 const f = gl.createShader(gl.FRAGMENT_SHADER);
                 gl.shaderSource(f, fragSrc);
                 gl.compileShader(f);
                 if (!gl.getShaderParameter(f, gl.COMPILE_STATUS)) {
-                    console.log('fragment shader is invalid');
-                    console.log(gl.getShaderInfoLog(f));
+                    console.error(`fragment shader is invalid.\n${gl.getShaderInfoLog(f)}`);
                     return;
                 }
                 const program = gl.createProgram();
@@ -231,8 +237,7 @@
                 gl.attachShader(program, f);
                 gl.linkProgram(program);
                 if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-                    console.log('Linking program fail.')
-                    console.log(gl.getProgramInfoLog(program));
+                    console.error(`Linking program fail.\n${gl.getProgramInfoLog(program)}`)
                     return;
                 }
                 gl.deleteShader(v);
