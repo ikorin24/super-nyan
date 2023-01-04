@@ -26,7 +26,7 @@
                 window.onload = (event) => this._fitCanvasToScreen();
                 const gl = this._canvas.getContext('webgl2');
                 this.gl = gl;
-                gl.enable(gl.CULL_Face);
+                gl.enable(gl.CULL_FACE);
                 gl.enable(gl.DEPTH_TEST);
                 gl.depthFunc(gl.LEQUAL);
                 gl.clearColor(0, 0, 0, 0);
@@ -291,6 +291,7 @@
             _components = { };
             instancingCount = 0;
             position = new Vec3();
+            scale = 1.0;
 
             constructor(engine, shader, positions, normals, uvs, colors, indices) {
                 const gl = engine.gl;
@@ -373,10 +374,11 @@
 
             getModelMatrix = () => {
                 const pos = this.position;
+                const s = this.scale;
                 return [
-                    1, 0, 0, 0,
-                    0, 1, 0, 0,
-                    0, 0, 1, 0,
+                    s, 0, 0, 0,
+                    0, s, 0, 0,
+                    0, 0, s, 0,
                     pos.x, pos.y, pos.z, 1
                 ];
             };
@@ -429,6 +431,18 @@
             constructor(engine, imageSrc) {
                 this._engine = engine;
                 this._image = new Image();
+                const createTexture = () => {
+                    const gl = this._engine.gl;
+                    this._texture = gl.createTexture();
+                    gl.bindTexture(gl.TEXTURE_2D, this._texture);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this._image);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+                    gl.generateMipmap(gl.TEXTURE_2D);
+                    gl.bindTexture(gl.TEXTURE_2D, null);
+                    this._isLoaded = true;
+                };
+                this._image.onload = () => createTexture();
                 this._image.src = imageSrc;
             }
 
@@ -441,25 +455,6 @@
                 if(this._owner) {
                     console.error('The texture already has already owner.');
                     return;
-                }
-                const image = this._image;
-                const createTexture = () => {
-                    const gl = this._engine.gl;
-                    this._texture = gl.createTexture();
-                    gl.bindTexture(gl.TEXTURE_2D, this._texture);
-                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
-                    // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR);
-                    gl.generateMipmap(gl.TEXTURE_2D);
-                    gl.bindTexture(gl.TEXTURE_2D, null);
-                    this._isLoaded = true;
-                };
-                if(image.complete) {
-                    createTexture();
-                }
-                else {
-                    image.onload = createTexture();
                 }
                 this._owner = owner;
             };
@@ -578,9 +573,19 @@ uniform mat4 _model;
 uniform mat4 _view;
 uniform mat4 _projection;
 out vec2 _fuv;
+vec3 rand33(uvec3 n) {
+    uvec3 k = uvec3(0x456789abu, 0x6789ab45u, 0x89ab4567u);
+    n ^= (n.yzx << 9);
+    n ^= (n.yzx >> 1);
+    n *= k;
+    n ^= (n.yzx << 1);
+    n *= k;
+    return vec3(n) / float(0xffffffffu);
+}
 void main(){
-    float y = _pos.y + float(gl_InstanceID) * 2.0;
-    gl_Position = _projection * _view * _model * vec4(_pos.x, y, _pos.z, 1.0);
+    vec3 p = rand33(uvec3(gl_InstanceID)) * 2.0 - 1.0;
+    p *= vec3(25);
+    gl_Position = _projection * _view * (_model * vec4(_pos, 1.0) + vec4(p, 1.0));
     _fuv = _uv;
 }
 `;
@@ -619,7 +624,8 @@ void main(){
             const shader = new RenderingShader(engine, VertSrc, FragSrc, mapper, onRendering);
             const nyan = new Renderable(engine, shader, positions, normals, uvs, colors, indices);
             nyan.addComponent('Texture', texture);
-            nyan.instancingCount = 20;
+            nyan.instancingCount = 300;
+            nyan.scale = 1.4;
             return nyan;
         }
 
@@ -629,33 +635,20 @@ void main(){
             moveCamera(engine);
             const scene = {
                 nyan: createNyan(engine).activate(),
-                testObj: createTestObj(engine).activate(),
+                // testObj: createTestObj(engine).activate(),
             };
-            nyanAnimation(scene.nyan);
             return engine;
         }
 
         function moveCamera(engine) {
             const camera = engine.camera;
             engine.addFrameEventListener((time) => {
-                const t = time / 2000;
-                camera.position.x = Math.cos(t * Math.PI * 2);
-                camera.position.y = Math.sin(t * Math.PI * 2);
+                const r = 40;
+                const t = time / 4000;
+                camera.position.x = Math.cos(t * Math.PI * 2) * r;
+                camera.position.z = Math.sin(t * Math.PI * 2) * r;
+                camera.direction = camera.position.negated();
                 return true;
-            });
-        }
-
-        function nyanAnimation(nyan) {
-            const engine = nyan.getEngine();
-            engine.addFrameEventListener((time) => {
-                const t =  time / 4000;
-                nyan.position.z = -10 + Math.sin(t * 2 * Math.PI) * 5;
-                return true;
-                nyan.position.z -= 0.1;
-                if (nyan.position.z > -100) {
-                    return true;
-                }
-                return false;
             });
         }
 
